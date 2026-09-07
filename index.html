@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Study Spots — UW–Madison</title>
+<meta name="description" content="An interactive, tagged map of the best study spots at UW–Madison — libraries, coffee shops, lounges, and hidden gems.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='50' fill='%23C5050C'/%3E%3Ctext x='50' y='68' font-size='58' text-anchor='middle' fill='white' font-family='Georgia,serif' font-weight='bold'%3EW%3C/text%3E%3C/svg%3E">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="header-inner">
+    <div class="brand">
+      <span class="brand-mark">W</span>
+      <div class="brand-text">
+        <p class="brand-eyebrow">UW&ndash;Madison</p>
+        <h1>Study Spots</h1>
+      </div>
+    </div>
+    <p class="tagline">A tagged, mapped guide to the best places on and off campus to actually get work done.</p>
+  </div>
+</header>
+
+<div class="toolbar">
+  <div class="toolbar-inner">
+    <div class="search-box">
+      <i class="fa-solid fa-magnifying-glass"></i>
+      <input type="text" id="search-input" placeholder="Search spots, buildings, tags…" autocomplete="off">
+    </div>
+    <div class="category-pills" id="category-pills"></div>
+  </div>
+  <div class="tag-row" id="tag-row"></div>
+</div>
+
+<div class="view-toggle-mobile">
+  <button class="view-btn active" data-view="list" type="button"><i class="fa-solid fa-list-ul"></i> List</button>
+  <button class="view-btn" data-view="map" type="button"><i class="fa-solid fa-map-location-dot"></i> Map</button>
+</div>
+
+<main class="app">
+  <section class="list-pane" id="list-pane">
+    <div class="results-count" id="results-count"></div>
+    <div class="spot-list" id="spot-list"></div>
+    <div class="empty-state" id="empty-state" hidden>
+      <i class="fa-solid fa-mug-hot"></i>
+      <p>No spots match your filters.</p>
+      <button id="clear-filters-btn" type="button">Clear filters</button>
+    </div>
+  </section>
+
+  <section class="map-pane" id="map-pane">
+    <div id="map"></div>
+    <div class="legend" id="legend"></div>
+  </section>
+</main>
+
+<div class="drawer-backdrop" id="drawer-backdrop"></div>
+<aside class="drawer" id="drawer" aria-hidden="true">
+  <button class="drawer-close" id="drawer-close" aria-label="Close details" type="button"><i class="fa-solid fa-xmark"></i></button>
+  <div class="drawer-content" id="drawer-content"></div>
+</aside>
+
+<footer class="site-footer">
+  <p><span id="spot-count">–</span> hand-picked spots across campus and Madison. Pin locations are approximate — confirm exact rooms via the building directory. Sourced from the UW&ndash;Madison Libraries directory, the Wisconsin Union, and student-submitted spots via <a href="https://buckygrades.com/study/" target="_blank" rel="noopener">BuckyGrades</a>.</p>
+</footer>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script type="module" src="app.js"></script>
+</body>
+</html>
