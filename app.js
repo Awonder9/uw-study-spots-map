@@ -108,6 +108,19 @@ import { CATEGORY_META, FILTER_TAGS, STUDY_SPOTS } from "./data.js";
     maxZoom: MAP_MAX_ZOOM
   }).addTo(map);
 
+  // On mobile the attribution text is collapsed to a small "©" by default
+  // (CSS-only outside the mobile breakpoint — see style.css) and expands on
+  // tap. Esri/OSM's free-tile terms require attribution to stay available,
+  // so this only declutters the display, it never removes it. Also moved to
+  // the map's top-right corner on mobile so the collapsed icon doesn't sit
+  // over the same corner as the info button.
+  if (window.matchMedia("(max-width: 880px)").matches) {
+    map.attributionControl.setPosition("topright");
+  }
+  map.attributionControl.getContainer().addEventListener("click", function () {
+    this.classList.toggle("attribution-expanded");
+  });
+
   var markers = {};
 
   function makeIcon(spot, dim, selected) {

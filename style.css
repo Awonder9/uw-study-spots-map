@@ -679,4 +679,37 @@ a{ color: var(--red); }
   .drawer{ width:100%; max-width:100%; top:auto; bottom:0; height:85vh;
     border-radius: 20px 20px 0 0; transform: translateY(100%); }
   .drawer.open{ transform: translateY(0); }
+
+  /* Collapse the map's tile-provider attribution to a small tappable "©" —
+     stays present (Esri/OSM's free-tile terms require it), just out of the
+     way until tapped, rather than permanently taking up space. Leaflet builds
+     this control's innerHTML as a mix of an <a> element plus bare text nodes
+     (the tile attribution string), so hiding it needs font-size:0 on the
+     container — a `> *{display:none}` rule only hides child elements, not
+     the raw text nodes, which is why stray text used to leak out. The "©"
+     is a ::before pseudo-element, which sets its own font-size independent
+     of the zeroed-out inherited value. The control itself is moved to the
+     map's top-right corner in app.js (map.attributionControl.setPosition),
+     so it sits inside .leaflet-top.leaflet-right rather than the default
+     bottom-right slot, keeping it clear of the info button.
+  */
+  .leaflet-control-attribution{
+    max-width: 24px; height: 24px; overflow: hidden; white-space: nowrap;
+    padding: 0 !important; box-sizing: border-box;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; font-size: 0;
+    background: var(--white); border-radius: 999px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.15);
+    transition: max-width .2s ease;
+  }
+  .leaflet-control-attribution::before{
+    content: "©"; font-family: Georgia, serif; font-size: 14px; font-weight: 700;
+    color: var(--ink-soft); flex-shrink: 0;
+  }
+  .leaflet-control-attribution.attribution-expanded{
+    max-width: 260px; height: auto; white-space: normal;
+    padding: 4px 8px !important; justify-content: flex-start;
+    font-size: 11px;
+  }
+  .leaflet-control-attribution.attribution-expanded::before{ display: none; }
 }
