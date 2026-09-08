@@ -1,0 +1,2 @@
+# Copy this file to .dev.vars (gitignored) for local testing with `npm run dev:full`.
+DASHBOARD_PASSWORD=choose-a-local-test-password
