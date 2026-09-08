@@ -41,8 +41,19 @@ import { CATEGORY_META, FILTER_TAGS, STUDY_SPOTS } from "./data.js";
   // area (verified directly) — capping here avoids both blur (from upscaling) and
   // blank "data not yet available" tiles.
   var MAP_MAX_ZOOM = 16;
-  var map = L.map("map", { zoomControl: true, scrollWheelZoom: true, maxZoom: MAP_MAX_ZOOM })
-    .setView([43.0735, -89.4055], 15);
+  // Every spot is in the Madison area — no reason to let users zoom out further.
+  var MAP_MIN_ZOOM = 13;
+  // Padded bounding box around all spots (isthmus + near west/east side) —
+  // panning is clamped to this so the map can't be dragged out to open country.
+  var MADISON_BOUNDS = L.latLngBounds([43.040, -89.499], [43.103, -89.357]);
+  var map = L.map("map", {
+    zoomControl: true,
+    scrollWheelZoom: true,
+    maxZoom: MAP_MAX_ZOOM,
+    minZoom: MAP_MIN_ZOOM,
+    maxBounds: MADISON_BOUNDS,
+    maxBoundsViscosity: 1.0
+  }).setView([43.0735, -89.4055], 15);
 
   L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}", {
     attribution: "Tiles &copy; Esri &mdash; Esri, HERE, Garmin, USGS, OpenStreetMap contributors",
