@@ -1,6 +1,7 @@
 import { STUDY_SPOTS } from "../data.js";
 import { pruneStale, computeBusynessStatus } from "./_shared/kv-helpers.js";
-import { timingSafeEqual, sha256Hex, isAuthed, sessionCookieHeader } from "./_shared/dashboard-auth.js";
+import { isAuthed, tryLogin } from "./_shared/dashboard-auth.js";
+import { escapeHtml, formatRelativeTime, htmlResponse, pageShell, renderLogin, renderError } from "./_shared/dashboard-ui.js";
 
 const LEVEL_META = {
   "empty": { label: "Empty", color: "#4C8C5B" },
@@ -15,84 +16,6 @@ const ISSUE_LABELS = {
   "wrong-hours": "Wrong hours",
   "other": "Other"
 };
-
-// ---------- rendering helpers ----------
-
-function escapeHtml(str) {
-  return String(str)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
-function formatRelativeTime(ts) {
-  const minutes = Math.round((Date.now() - ts) / 60000);
-  if (minutes < 1) return "just now";
-  if (minutes === 1) return "1 min ago";
-  if (minutes < 60) return minutes + " min ago";
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return hours === 1 ? "1 hr ago" : hours + " hrs ago";
-  const days = Math.round(hours / 24);
-  return days === 1 ? "1 day ago" : days + " days ago";
-}
-
-function htmlResponse(body, status, extraHeaders) {
-  const headers = new Headers({ "content-type": "text/html; charset=utf-8" });
-  if (extraHeaders) for (const [k, v] of Object.entries(extraHeaders)) headers.append(k, v);
-  return new Response(body, { status: status || 200, headers });
-}
-
-function pageShell(title, bodyHtml) {
-  return (
-    "<!doctype html><html lang=\"en\"><head><meta charset=\"UTF-8\">" +
-    "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">" +
-    "<title>" + escapeHtml(title) + "</title>" +
-    "<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">" +
-    "<link href=\"https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Inter:wght@400;500;600;700&display=swap\" rel=\"stylesheet\">" +
-    "<style>" + PAGE_CSS + "</style></head><body>" + bodyHtml + "</body></html>"
-  );
-}
-
-const PAGE_CSS =
-  ":root{--red:#C5050C;--red-dark:#9B0000;--red-tint:#FDEBEA;--ink:#1D1A17;--ink-soft:#5B564F;" +
-  "--ink-faint:#8C867C;--paper:#FBF8F2;--paper-alt:#F3EDE0;--line:#E6DFD1;--white:#FFFFFF;}" +
-  "*{box-sizing:border-box;}body{margin:0;font-family:'Inter',sans-serif;background:var(--paper);color:var(--ink);}" +
-  "h1,h2{font-family:'Fraunces',serif;margin:0;}" +
-  ".login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;}" +
-  ".login-card{background:var(--white);border:1px solid var(--line);border-radius:16px;padding:32px;max-width:340px;width:100%;box-shadow:0 8px 24px rgba(29,26,23,.10);}" +
-  ".login-card h1{font-size:22px;margin-bottom:8px;}" +
-  ".login-card p{font-size:13.5px;color:var(--ink-soft);margin:0 0 18px;}" +
-  ".login-card input{width:100%;font:inherit;font-size:14px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;margin-bottom:12px;}" +
-  ".login-card button{width:100%;background:var(--ink);color:#fff;border:none;padding:11px;border-radius:999px;font-weight:600;font-size:14px;cursor:pointer;}" +
-  ".login-card button:hover{background:var(--red);}" +
-  ".login-error{background:var(--red-tint);color:var(--red-dark);font-size:12.5px;padding:8px 10px;border-radius:8px;margin-bottom:12px;}" +
-  ".dash-header{background:var(--white);border-bottom:1px solid var(--line);padding:18px 28px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;}" +
-  ".dash-header h1{font-size:22px;}" +
-  ".dash-header a{color:var(--ink-soft);font-size:13px;font-weight:600;text-decoration:none;}" +
-  ".dash-header a:hover{color:var(--red);}" +
-  ".dash-body{max-width:960px;margin:0 auto;padding:24px 28px 60px;}" +
-  ".dash-section{margin-bottom:36px;}" +
-  ".dash-section h2{font-size:17px;margin-bottom:14px;}" +
-  ".dash-empty{color:var(--ink-faint);font-size:13.5px;background:var(--white);border:1px dashed var(--line);border-radius:12px;padding:20px;text-align:center;}" +
-  ".report-card{background:var(--white);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:10px;}" +
-  ".report-card-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;}" +
-  ".report-card-head strong{font-size:14.5px;}" +
-  ".level-pill{font-size:11px;font-weight:700;padding:3px 10px;border-radius:999px;color:#fff;}" +
-  ".mixed-tag{font-size:10.5px;font-weight:700;color:var(--red-dark);background:var(--red-tint);padding:3px 8px;border-radius:999px;}" +
-  ".report-row{font-size:12px;color:var(--ink-soft);padding:3px 0;border-top:1px solid var(--paper-alt);}" +
-  ".report-row:first-child{border-top:none;}" +
-  ".issue-tag{font-size:11px;font-weight:600;background:var(--paper-alt);padding:2px 8px;border-radius:999px;white-space:nowrap;}" +
-  ".dash-actions{display:flex;align-items:flex-start;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid var(--paper-alt);flex-wrap:wrap;}" +
-  ".dash-inline-form{flex:0 0 auto;}" +
-  ".dash-respond-form{flex:1 1 220px;display:flex;gap:8px;align-items:flex-start;}" +
-  ".dash-respond-form textarea{flex:1;font:inherit;font-size:12.5px;padding:7px 9px;border:1px solid var(--line);border-radius:8px;resize:vertical;min-height:36px;background:var(--paper-alt);}" +
-  ".dash-btn{font:inherit;font-size:12px;font-weight:600;border-radius:999px;padding:7px 13px;cursor:pointer;white-space:nowrap;border:1px solid var(--line);background:var(--white);color:var(--ink-soft);}" +
-  ".dash-btn:hover{background:var(--paper-alt);}" +
-  ".dash-btn-respond{background:var(--ink);color:#fff;border-color:var(--ink);}" +
-  ".dash-btn-respond:hover{background:var(--red);border-color:var(--red);}" +
-  ".ts-cell{color:var(--ink-faint);white-space:nowrap;}";
 
 function actionForms(type, key) {
   const typeAttr = escapeHtml(type);
@@ -113,28 +36,6 @@ function actionForms(type, key) {
     "<button type=\"submit\" class=\"dash-btn dash-btn-respond\">Respond</button>" +
     "</form>" +
     "</div>"
-  );
-}
-
-function renderLogin(error) {
-  const errorHtml = error ? "<div class=\"login-error\">" + escapeHtml(error) + "</div>" : "";
-  return pageShell(
-    "Dashboard — UW Study Spots",
-    "<div class=\"login-wrap\"><div class=\"login-card\">" +
-      "<h1>Dashboard</h1><p>Enter the password to view reports.</p>" +
-      errorHtml +
-      "<form method=\"POST\" action=\"/dashboard\">" +
-      "<input type=\"password\" name=\"password\" placeholder=\"Password\" autofocus autocomplete=\"current-password\">" +
-      "<button type=\"submit\">Log in</button>" +
-      "</form></div></div>"
-  );
-}
-
-function renderError(message) {
-  return pageShell(
-    "Dashboard — UW Study Spots",
-    "<div class=\"login-wrap\"><div class=\"login-card\"><h1>Dashboard</h1>" +
-      "<div class=\"login-error\">" + escapeHtml(message) + "</div></div></div>"
   );
 }
 
@@ -211,7 +112,8 @@ function renderSuggestionsSection(rows) {
 
 function renderDashboard(data) {
   const body =
-    "<div class=\"dash-header\"><h1>Reports Dashboard</h1><a href=\"/\">&larr; Back to map</a></div>" +
+    "<div class=\"dash-header\"><h1>Reports Dashboard</h1>" +
+    "<div class=\"dash-header-links\"><a href=\"/dashboard-edit\">Edit Spots</a><a href=\"/\">&larr; Back to map</a></div></div>" +
     "<div class=\"dash-body\">" +
     "<div class=\"dash-section\"><h2>Suggested spots (" + data.suggestionRows.length + ")</h2>" +
     renderSuggestionsSection(data.suggestionRows) +
@@ -284,7 +186,7 @@ export async function onRequestGet({ request, env }) {
     );
   }
   if (!(await isAuthed(request, env))) {
-    return htmlResponse(renderLogin());
+    return htmlResponse(renderLogin(null, "/dashboard", "/dashboard"));
   }
   const data = await loadDashboardData(env);
   return htmlResponse(renderDashboard(data));
@@ -295,13 +197,9 @@ export async function onRequestPost({ request, env }) {
     return htmlResponse(renderError("Dashboard isn't configured yet."), 500);
   }
   const form = await request.formData();
-  const password = String(form.get("password") || "");
-  if (!timingSafeEqual(password, env.DASHBOARD_PASSWORD)) {
-    return htmlResponse(renderLogin("Incorrect password."), 401);
+  const loginResponse = await tryLogin(form, request, env, "/dashboard");
+  if (!loginResponse) {
+    return htmlResponse(renderLogin("Incorrect password.", "/dashboard", "/dashboard"), 401);
   }
-  const token = await sha256Hex(env.DASHBOARD_PASSWORD + ":session");
-  return new Response(null, {
-    status: 302,
-    headers: { Location: "/dashboard", "Set-Cookie": sessionCookieHeader(request, token) }
-  });
+  return loginResponse;
 }

@@ -1,7 +1,27 @@
 import { CATEGORY_META, FILTER_TAGS, STUDY_SPOTS } from "./data.js";
 
-(function () {
+(async function () {
   "use strict";
+
+  // Merge in any live edits made via the dashboard's spot editor before
+  // anything else runs. STUDY_SPOTS is a live-binding import and this
+  // mutates the existing objects in place (not replacing the array), so
+  // every downstream reference in this file just sees the merged data
+  // once the rest of setup runs below. If this fails for any reason, the
+  // site still works fine on the static bundled data.
+  try {
+    var overridesRes = await fetch("/api/spots");
+    if (overridesRes.ok) {
+      var overridesData = await overridesRes.json();
+      var overridesById = {};
+      (overridesData.spots || []).forEach(function (s) { overridesById[s.id] = s; });
+      STUDY_SPOTS.forEach(function (spot) {
+        if (overridesById[spot.id]) Object.assign(spot, overridesById[spot.id]);
+      });
+    }
+  } catch (e) {
+    // non-critical — proceed with static bundled data
+  }
 
   var state = {
     search: "",
@@ -14,6 +34,7 @@ import { CATEGORY_META, FILTER_TAGS, STUDY_SPOTS } from "./data.js";
     searchInput: document.getElementById("search-input"),
     categoryPills: document.getElementById("category-pills"),
     tagRow: document.getElementById("tag-row"),
+    tagToggleBtn: document.getElementById("tag-toggle-btn"),
     spotList: document.getElementById("spot-list"),
     resultsCount: document.getElementById("results-count"),
     emptyState: document.getElementById("empty-state"),
@@ -47,7 +68,13 @@ import { CATEGORY_META, FILTER_TAGS, STUDY_SPOTS } from "./data.js";
     logModal: document.getElementById("log-modal"),
     logModalBackdrop: document.getElementById("log-modal-backdrop"),
     logModalClose: document.getElementById("log-modal-close"),
-    logList: document.getElementById("log-list")
+    logList: document.getElementById("log-list"),
+    updateToast: document.getElementById("update-toast"),
+    updateToastClose: document.getElementById("update-toast-close"),
+    updateToastTag: document.getElementById("update-toast-tag"),
+    updateToastSummary: document.getElementById("update-toast-summary"),
+    updateToastResponse: document.getElementById("update-toast-response"),
+    updateToastView: document.getElementById("update-toast-view")
   };
 
   var spotsById = {};
@@ -156,6 +183,14 @@ import { CATEGORY_META, FILTER_TAGS, STUDY_SPOTS } from "./data.js";
     });
   })();
 
+  // Mobile-only collapse for the tag row (hidden entirely by CSS on desktop,
+  // so this toggle has no visual effect there).
+  els.tagToggleBtn.addEventListener("click", function () {
+    var expanded = els.tagRow.classList.toggle("expanded");
+    els.tagToggleBtn.classList.toggle("expanded", expanded);
+    els.tagToggleBtn.setAttribute("aria-expanded", String(expanded));
+  });
+
   // ---------- Search ----------
   els.searchInput.addEventListener("input", function () {
     state.search = els.searchInput.value.trim().toLowerCase();
@@ -259,7 +294,19 @@ import { CATEGORY_META, FILTER_TAGS, STUDY_SPOTS } from "./data.js";
     openDrawer(spot);
   }
 
+  // Only one overlay (drawer, any modal, or the update toast) should ever be
+  // visible at a time — each open function calls this first so the newest
+  // one always wins instead of stacking on top of whatever was already open.
+  function closeAllOverlays() {
+    closeDrawer();
+    closeInfoModal();
+    closeSuggestModal();
+    closeLogModal();
+    hideUpdateToast();
+  }
+
   function openDrawer(spot) {
+    closeAllOverlays();
     var meta = CATEGORY_META[spot.category];
     var affiliationBadge = spot.affiliation === "University"
       ? '<span class="badge badge-university">University</span>'
@@ -308,11 +355,13 @@ import { CATEGORY_META, FILTER_TAGS, STUDY_SPOTS } from "./data.js";
       closeInfoModal();
       closeSuggestModal();
       closeLogModal();
+      hideUpdateToast();
     }
   });
 
   // ---------- Info modal ----------
   function openInfoModal() {
+    closeAllOverlays();
     els.infoModal.classList.add("open");
     els.infoModal.setAttribute("aria-hidden", "false");
     els.infoModalBackdrop.classList.add("open");
@@ -336,6 +385,7 @@ import { CATEGORY_META, FILTER_TAGS, STUDY_SPOTS } from "./data.js";
     els.suggestSubmitBtn.textContent = "Submit suggestion";
   }
   function openSuggestModal() {
+    closeAllOverlays();
     resetSuggestForm();
     els.suggestModal.classList.add("open");
     els.suggestModal.setAttribute("aria-hidden", "false");
@@ -412,7 +462,16 @@ import { CATEGORY_META, FILTER_TAGS, STUDY_SPOTS } from "./data.js";
     div.textContent = str == null ? "" : String(str);
     return div.innerHTML;
   }
+  var UPDATE_SEEN_KEY = "uw-study-spots-last-seen-update";
+  function getLastSeenUpdate() {
+    try { return Number(localStorage.getItem(UPDATE_SEEN_KEY)) || 0; } catch (e) { return 0; }
+  }
+  function markUpdateSeen(ts) {
+    try { localStorage.setItem(UPDATE_SEEN_KEY, String(ts)); } catch (e) {}
+  }
+
   function openLogModal() {
+    closeAllOverlays();
     els.logModal.classList.add("open");
     els.logModal.setAttribute("aria-hidden", "false");
     els.logModalBackdrop.classList.add("open");
@@ -426,6 +485,7 @@ import { CATEGORY_META, FILTER_TAGS, STUDY_SPOTS } from "./data.js";
           return;
         }
         els.logList.innerHTML = entries.map(logEntryHtml).join("");
+        markUpdateSeen(entries[0].ts);
       })
       .catch(function () {
         els.logList.innerHTML = '<div class="log-empty">Couldn\'t load updates — please try again.</div>';
@@ -439,6 +499,39 @@ import { CATEGORY_META, FILTER_TAGS, STUDY_SPOTS } from "./data.js";
   els.logBtn.addEventListener("click", openLogModal);
   els.logModalClose.addEventListener("click", closeLogModal);
   els.logModalBackdrop.addEventListener("click", closeLogModal);
+
+  // ---------- New-update toast ----------
+  function showUpdateToast(entry) {
+    els.updateToastTag.textContent = entry.type === "suggestion" ? "Suggestion" : "Feedback";
+    els.updateToastSummary.textContent = entry.summary;
+    els.updateToastResponse.textContent = entry.response;
+    els.updateToast.hidden = false;
+    requestAnimationFrame(function () { els.updateToast.classList.add("open"); });
+  }
+  function hideUpdateToast() {
+    els.updateToast.classList.remove("open");
+    setTimeout(function () { els.updateToast.hidden = true; }, 250);
+  }
+  els.updateToastClose.addEventListener("click", hideUpdateToast);
+  els.updateToastView.addEventListener("click", function () {
+    hideUpdateToast();
+    openLogModal();
+  });
+
+  function checkForNewUpdate() {
+    fetch("/api/log")
+      .then(function (res) { return res.json(); })
+      .then(function (data) {
+        var entries = data.entries || [];
+        if (!entries.length) return;
+        var latest = entries[0];
+        if (latest.ts > getLastSeenUpdate()) {
+          showUpdateToast(latest);
+          markUpdateSeen(latest.ts);
+        }
+      })
+      .catch(function () {}); // non-critical — fail silently
+  }
 
   // ---------- Device ID (anonymous, local-only) ----------
   var DEVICE_ID_KEY = "uw-study-spots-device-id";
@@ -697,6 +790,8 @@ import { CATEGORY_META, FILTER_TAGS, STUDY_SPOTS } from "./data.js";
     if (window.innerWidth > 880) return;
     els.listPane.classList.toggle("hidden-mobile", view !== "list");
     els.mapPane.classList.toggle("hidden-mobile", view !== "map");
+    els.suggestBtn.classList.toggle("hidden-mobile", view !== "list");
+    els.infoBtn.classList.toggle("hidden-mobile", view !== "map");
     els.viewBtns.forEach(function (b) { b.classList.toggle("active", b.dataset.view === view); });
     if (view === "map") setTimeout(function () { map.invalidateSize(); }, 60);
   }
@@ -718,6 +813,7 @@ import { CATEGORY_META, FILTER_TAGS, STUDY_SPOTS } from "./data.js";
   els.infoSpotCount.textContent = STUDY_SPOTS.length;
   applyFilters();
   showMobileView("list");
+  checkForNewUpdate();
 
   var hashId = location.hash.replace("#", "");
   if (hashId && spotsById[hashId]) {

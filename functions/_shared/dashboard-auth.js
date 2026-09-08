@@ -39,3 +39,20 @@ export function sessionCookieHeader(request, token) {
     (isHttps ? "; Secure" : "")
   );
 }
+
+// Verifies a login POST (already-parsed FormData, since a request body can
+// only be read once). Returns a redirect Response on success — to whatever
+// the "redirect" field carried, so a login triggered from a deep link (e.g.
+// /dashboard-edit?spot=x) lands back where the user was headed — or null on
+// a wrong password, so the caller can re-render its own login form with an
+// error instead.
+export async function tryLogin(form, request, env, fallbackRedirect) {
+  const password = String(form.get("password") || "");
+  if (!timingSafeEqual(password, env.DASHBOARD_PASSWORD)) return null;
+  const token = await sha256Hex(env.DASHBOARD_PASSWORD + ":session");
+  const redirectTo = String(form.get("redirect") || fallbackRedirect);
+  return new Response(null, {
+    status: 302,
+    headers: { Location: redirectTo, "Set-Cookie": sessionCookieHeader(request, token) }
+  });
+}

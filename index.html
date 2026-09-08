@@ -25,6 +25,9 @@
     <button class="log-btn" id="log-btn" type="button"><i class="fa-solid fa-bullhorn"></i> <span class="log-btn-label">Updates</span></button>
     <div class="category-pills" id="category-pills"></div>
   </div>
+  <button class="tag-toggle-btn" id="tag-toggle-btn" type="button" aria-expanded="false" aria-controls="tag-row">
+    <span>Tags</span> <i class="fa-solid fa-chevron-down"></i>
+  </button>
   <div class="tag-row" id="tag-row"></div>
 </div>
 
@@ -104,6 +107,14 @@
   <h3 id="log-modal-title">Updates</h3>
   <p class="suggest-modal-sub">Responses to feedback and spot suggestions from the community.</p>
   <div id="log-list"></div>
+</div>
+
+<div class="update-toast" id="update-toast" role="status" hidden>
+  <button class="update-toast-close" id="update-toast-close" type="button" aria-label="Dismiss"><i class="fa-solid fa-xmark"></i></button>
+  <div class="update-toast-tag" id="update-toast-tag"></div>
+  <div class="update-toast-summary" id="update-toast-summary"></div>
+  <div class="update-toast-response" id="update-toast-response"></div>
+  <button class="update-toast-view" id="update-toast-view" type="button">View all updates</button>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>

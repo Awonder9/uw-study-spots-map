@@ -100,6 +100,7 @@ a{ color: var(--red); }
   padding: 0 18px 12px;
   display:flex; gap:8px; flex-wrap:wrap;
 }
+.tag-toggle-btn{ display:none; } /* mobile-only — see responsive section */
 .tag-chip{
   border: 1px dashed var(--line);
   background: transparent;
@@ -596,11 +597,58 @@ a{ color: var(--red); }
 .log-empty{ color: var(--ink-faint); font-size:13.5px; text-align:center; padding: 30px 10px; }
 .log-loading{ color: var(--ink-faint); font-size:13px; text-align:center; padding: 20px 10px; }
 
+/* ---------- Update toast ---------- */
+.update-toast{
+  position: fixed; left: 20px; bottom: 20px; z-index: 1010;
+  max-width: 320px; width: calc(100vw - 40px);
+  background: var(--white); border: 1px solid var(--line); border-radius: var(--radius-m);
+  box-shadow: var(--shadow-lg);
+  padding: 16px 18px 14px;
+  opacity: 0; transform: translateY(12px);
+  transition: opacity .25s ease, transform .25s ease;
+}
+.update-toast.open{ opacity: 1; transform: translateY(0); }
+.update-toast[hidden]{ display: none; }
+.update-toast-close{
+  position:absolute; top:10px; right:10px;
+  width:24px; height:24px; border-radius:50%;
+  border:none; background:transparent; color:var(--ink-faint);
+  display:flex; align-items:center; justify-content:center; font-size:12px;
+}
+.update-toast-close:hover{ background: var(--paper-alt); color: var(--ink); }
+.update-toast-tag{
+  font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.05em;
+  color: var(--red); margin-bottom:6px;
+}
+.update-toast-summary{ font-size:13.5px; font-weight:600; color:var(--ink); margin-bottom:5px; padding-right:22px; }
+.update-toast-response{
+  font-size:12.5px; color:var(--ink-soft); line-height:1.5; margin-bottom:12px;
+  display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;
+}
+.update-toast-view{
+  font-size:12px; font-weight:600; color:#fff; background:var(--ink); border:none;
+  padding:7px 14px; border-radius:999px; cursor:pointer;
+}
+.update-toast-view:hover{ background:var(--red); }
+
 /* ---------- Responsive ---------- */
 @media (max-width: 880px){
   .toolbar-inner{ padding:10px 16px 6px; }
-  .tag-row{ padding:0 16px 10px; }
   .search-box{ flex:1 1 auto; min-width:0; }
+
+  .tag-toggle-btn{
+    display:flex; align-items:center; justify-content:space-between; gap:6px;
+    width:100%; background:none; border:none;
+    padding:6px 16px; font-family:inherit; font-size:12px; font-weight:600;
+    color: var(--ink-faint); text-transform:uppercase; letter-spacing:.04em;
+  }
+  .tag-toggle-btn i{ transition: transform .2s ease; font-size:10px; }
+  .tag-toggle-btn.expanded i{ transform: rotate(180deg); }
+  .tag-row{
+    padding: 0 16px; margin:0; max-height:0; overflow:hidden;
+    transition: max-height .25s ease, padding-bottom .25s ease;
+  }
+  .tag-row.expanded{ max-height:320px; padding-bottom:10px; }
   .category-pills{ overflow-x:auto; flex-wrap:nowrap; width:100%; padding-bottom:2px; }
   .category-pills::-webkit-scrollbar{ display:none; }
   .log-btn{
@@ -622,6 +670,11 @@ a{ color: var(--red); }
   .app{ grid-template-columns: 1fr; }
   .list-pane{ border-right:none; }
   .list-pane.hidden-mobile, .map-pane.hidden-mobile{ display:none; }
+  .suggest-btn.hidden-mobile, .info-btn.hidden-mobile{ display:none; }
+  /* Only one of these two shows at a time on mobile (list vs. map view), so
+     each should sit flush at the right edge rather than the desktop offset
+     that exists to leave room for its sibling beside it. */
+  .suggest-btn{ right: 20px; }
 
   .drawer{ width:100%; max-width:100%; top:auto; bottom:0; height:85vh;
     border-radius: 20px 20px 0 0; transform: translateY(100%); }
