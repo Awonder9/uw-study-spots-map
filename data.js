@@ -192,16 +192,6 @@ export const STUDY_SPOTS = [
     tags: ["University", "Student Union", "Chill", "Lake View", "Hidden Gem"]
   },
   {
-    id: "union-study-pods",
-    name: "Memorial Union Study Pods",
-    category: "Student Union",
-    affiliation: "University",
-    address: "800 Langdon St, Madison, WI 53706 (near Gekas Commons)",
-    lat: 43.07652, lng: -89.4003,
-    description: "Individual pod seating with outlets right next to Peet's Coffee — solo-focused and easy to duck in and out of between classes.",
-    tags: ["University", "Student Union", "Quiet", "Solo-Friendly", "Food & Coffee"]
-  },
-  {
     id: "prairie-fire-lounge",
     name: "Prairie Fire Lounge",
     category: "Student Union",
