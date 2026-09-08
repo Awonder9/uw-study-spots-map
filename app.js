@@ -30,7 +30,24 @@ import { CATEGORY_META, FILTER_TAGS, STUDY_SPOTS } from "./data.js";
     infoModal: document.getElementById("info-modal"),
     infoModalBackdrop: document.getElementById("info-modal-backdrop"),
     infoModalClose: document.getElementById("info-modal-close"),
-    infoSpotCount: document.getElementById("info-spot-count")
+    infoSpotCount: document.getElementById("info-spot-count"),
+    suggestBtn: document.getElementById("suggest-btn"),
+    suggestModal: document.getElementById("suggest-modal"),
+    suggestModalBackdrop: document.getElementById("suggest-modal-backdrop"),
+    suggestModalClose: document.getElementById("suggest-modal-close"),
+    suggestForm: document.getElementById("suggest-form"),
+    suggestThanks: document.getElementById("suggest-thanks"),
+    suggestFormError: document.getElementById("suggest-form-error"),
+    suggestSubmitBtn: document.getElementById("suggest-submit-btn"),
+    suggestName: document.getElementById("suggest-name"),
+    suggestLocation: document.getElementById("suggest-location"),
+    suggestCategory: document.getElementById("suggest-category"),
+    suggestDescription: document.getElementById("suggest-description"),
+    logBtn: document.getElementById("log-btn"),
+    logModal: document.getElementById("log-modal"),
+    logModalBackdrop: document.getElementById("log-modal-backdrop"),
+    logModalClose: document.getElementById("log-modal-close"),
+    logList: document.getElementById("log-list")
   };
 
   var spotsById = {};
@@ -289,6 +306,8 @@ import { CATEGORY_META, FILTER_TAGS, STUDY_SPOTS } from "./data.js";
     if (e.key === "Escape") {
       closeDrawer();
       closeInfoModal();
+      closeSuggestModal();
+      closeLogModal();
     }
   });
 
@@ -306,6 +325,120 @@ import { CATEGORY_META, FILTER_TAGS, STUDY_SPOTS } from "./data.js";
   els.infoBtn.addEventListener("click", openInfoModal);
   els.infoModalClose.addEventListener("click", closeInfoModal);
   els.infoModalBackdrop.addEventListener("click", closeInfoModal);
+
+  // ---------- Suggest a spot modal ----------
+  function resetSuggestForm() {
+    els.suggestForm.reset();
+    els.suggestForm.hidden = false;
+    els.suggestThanks.hidden = true;
+    els.suggestFormError.textContent = "";
+    els.suggestSubmitBtn.disabled = false;
+    els.suggestSubmitBtn.textContent = "Submit suggestion";
+  }
+  function openSuggestModal() {
+    resetSuggestForm();
+    els.suggestModal.classList.add("open");
+    els.suggestModal.setAttribute("aria-hidden", "false");
+    els.suggestModalBackdrop.classList.add("open");
+  }
+  function closeSuggestModal() {
+    els.suggestModal.classList.remove("open");
+    els.suggestModal.setAttribute("aria-hidden", "true");
+    els.suggestModalBackdrop.classList.remove("open");
+  }
+  els.suggestBtn.addEventListener("click", openSuggestModal);
+  els.suggestModalClose.addEventListener("click", closeSuggestModal);
+  els.suggestModalBackdrop.addEventListener("click", closeSuggestModal);
+
+  els.suggestForm.addEventListener("submit", function (e) {
+    e.preventDefault();
+    var name = els.suggestName.value.trim();
+    var location = els.suggestLocation.value.trim();
+    if (!name || !location) {
+      els.suggestFormError.textContent = "Please fill in the spot name and location.";
+      return;
+    }
+    els.suggestFormError.textContent = "";
+    els.suggestSubmitBtn.disabled = true;
+    els.suggestSubmitBtn.textContent = "Submitting…";
+
+    fetch("/api/suggest-spot", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: name,
+        location: location,
+        category: els.suggestCategory.value,
+        description: els.suggestDescription.value.trim(),
+        deviceId: getDeviceId()
+      })
+    })
+      .then(function (res) { return res.json(); })
+      .then(function (data) {
+        if (data.ok) {
+          els.suggestForm.hidden = true;
+          els.suggestThanks.hidden = false;
+        } else if (data.error === "rate_limited") {
+          els.suggestFormError.textContent = "You've submitted a suggestion recently — please wait a bit before sending another.";
+          els.suggestSubmitBtn.disabled = false;
+          els.suggestSubmitBtn.textContent = "Submit suggestion";
+        } else {
+          els.suggestFormError.textContent = "Something went wrong — please try again.";
+          els.suggestSubmitBtn.disabled = false;
+          els.suggestSubmitBtn.textContent = "Submit suggestion";
+        }
+      })
+      .catch(function () {
+        els.suggestFormError.textContent = "Couldn't connect — please try again.";
+        els.suggestSubmitBtn.disabled = false;
+        els.suggestSubmitBtn.textContent = "Submit suggestion";
+      });
+  });
+
+  // ---------- Updates log ----------
+  function logEntryHtml(entry) {
+    var typeLabel = entry.type === "suggestion" ? "Suggestion" : "Feedback";
+    return (
+      '<div class="log-entry">' +
+      '<div class="log-entry-tag">' + typeLabel + "</div>" +
+      '<div class="log-entry-summary">' + escapeHtmlClient(entry.summary) + "</div>" +
+      '<div class="log-entry-response">' + escapeHtmlClient(entry.response) + "</div>" +
+      '<div class="log-entry-time">' + formatRelativeTime(entry.ts) + "</div>" +
+      "</div>"
+    );
+  }
+  function escapeHtmlClient(str) {
+    var div = document.createElement("div");
+    div.textContent = str == null ? "" : String(str);
+    return div.innerHTML;
+  }
+  function openLogModal() {
+    els.logModal.classList.add("open");
+    els.logModal.setAttribute("aria-hidden", "false");
+    els.logModalBackdrop.classList.add("open");
+    els.logList.innerHTML = '<div class="log-loading">Loading updates&hellip;</div>';
+    fetch("/api/log")
+      .then(function (res) { return res.json(); })
+      .then(function (data) {
+        var entries = data.entries || [];
+        if (!entries.length) {
+          els.logList.innerHTML = '<div class="log-empty">No updates yet — check back after you submit feedback or a suggestion.</div>';
+          return;
+        }
+        els.logList.innerHTML = entries.map(logEntryHtml).join("");
+      })
+      .catch(function () {
+        els.logList.innerHTML = '<div class="log-empty">Couldn\'t load updates — please try again.</div>';
+      });
+  }
+  function closeLogModal() {
+    els.logModal.classList.remove("open");
+    els.logModal.setAttribute("aria-hidden", "true");
+    els.logModalBackdrop.classList.remove("open");
+  }
+  els.logBtn.addEventListener("click", openLogModal);
+  els.logModalClose.addEventListener("click", closeLogModal);
+  els.logModalBackdrop.addEventListener("click", closeLogModal);
 
   // ---------- Device ID (anonymous, local-only) ----------
   var DEVICE_ID_KEY = "uw-study-spots-device-id";

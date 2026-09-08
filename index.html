@@ -22,6 +22,7 @@
       <i class="fa-solid fa-magnifying-glass"></i>
       <input type="text" id="search-input" placeholder="Search spots, buildings, tags…" autocomplete="off">
     </div>
+    <button class="log-btn" id="log-btn" type="button"><i class="fa-solid fa-bullhorn"></i> <span class="log-btn-label">Updates</span></button>
     <div class="category-pills" id="category-pills"></div>
   </div>
   <div class="tag-row" id="tag-row"></div>
@@ -57,11 +58,52 @@
 
 <button class="info-btn" id="info-btn" type="button" aria-label="About this site"><i class="fa-solid fa-info"></i></button>
 
+<button class="suggest-btn" id="suggest-btn" type="button"><i class="fa-solid fa-plus"></i> Suggest a spot</button>
+
 <div class="info-modal-backdrop" id="info-modal-backdrop"></div>
 <div class="info-modal" id="info-modal" role="dialog" aria-hidden="true" aria-labelledby="info-modal-title">
   <button class="info-modal-close" id="info-modal-close" type="button" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
   <h3 id="info-modal-title">About this map</h3>
   <p><span id="info-spot-count">–</span> hand-picked spots across campus and Madison. Pin locations are approximate — confirm exact rooms via the building directory. Sourced from the UW&ndash;Madison Libraries directory, the Wisconsin Union, and student-submitted spots via <a href="https://buckygrades.com/study/" target="_blank" rel="noopener">BuckyGrades</a>.</p>
+</div>
+
+<div class="suggest-modal-backdrop" id="suggest-modal-backdrop"></div>
+<div class="suggest-modal" id="suggest-modal" role="dialog" aria-hidden="true" aria-labelledby="suggest-modal-title">
+  <button class="info-modal-close" id="suggest-modal-close" type="button" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
+  <div id="suggest-modal-body">
+    <h3 id="suggest-modal-title">Suggest a study spot</h3>
+    <p class="suggest-modal-sub">Know a great spot that's missing from the map? Tell us about it.</p>
+    <form id="suggest-form">
+      <label for="suggest-name">Spot name</label>
+      <input type="text" id="suggest-name" maxlength="150" placeholder="e.g. Grainger Hall Atrium" required>
+      <label for="suggest-location">Location / address</label>
+      <input type="text" id="suggest-location" maxlength="300" placeholder="e.g. 975 University Ave, Madison" required>
+      <label for="suggest-category">Category (optional)</label>
+      <select id="suggest-category">
+        <option value="">Not sure</option>
+        <option>Library</option>
+        <option>Student Union</option>
+        <option>Academic Building</option>
+        <option>Outdoor</option>
+        <option>Dining Hall</option>
+        <option>Coffee Shop</option>
+        <option>Other</option>
+      </select>
+      <label for="suggest-description">Why it's worth adding (optional)</label>
+      <textarea id="suggest-description" maxlength="1000" placeholder="Quiet, good outlets, rarely crowded..."></textarea>
+      <div id="suggest-form-error"></div>
+      <button class="suggest-submit-btn" id="suggest-submit-btn" type="submit">Submit suggestion</button>
+    </form>
+    <div class="suggest-thanks" id="suggest-thanks" hidden><i class="fa-solid fa-check"></i> Thanks! We'll take a look.</div>
+  </div>
+</div>
+
+<div class="log-modal-backdrop" id="log-modal-backdrop"></div>
+<div class="log-modal" id="log-modal" role="dialog" aria-hidden="true" aria-labelledby="log-modal-title">
+  <button class="info-modal-close" id="log-modal-close" type="button" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
+  <h3 id="log-modal-title">Updates</h3>
+  <p class="suggest-modal-sub">Responses to feedback and spot suggestions from the community.</p>
+  <div id="log-list"></div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>

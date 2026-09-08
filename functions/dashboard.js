@@ -1,8 +1,6 @@
 import { STUDY_SPOTS } from "../data.js";
 import { pruneStale, computeBusynessStatus } from "./_shared/kv-helpers.js";
-
-const COOKIE_NAME = "dashboard_auth";
-const SESSION_MAX_AGE = 60 * 60 * 24 * 7; // 7 days
+import { timingSafeEqual, sha256Hex, isAuthed, sessionCookieHeader } from "./_shared/dashboard-auth.js";
 
 const LEVEL_META = {
   "empty": { label: "Empty", color: "#4C8C5B" },
@@ -17,37 +15,6 @@ const ISSUE_LABELS = {
   "wrong-hours": "Wrong hours",
   "other": "Other"
 };
-
-// ---------- crypto / cookie helpers ----------
-
-async function sha256Hex(text) {
-  const bytes = new TextEncoder().encode(text);
-  const hash = await crypto.subtle.digest("SHA-256", bytes);
-  return Array.from(new Uint8Array(hash)).map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-function timingSafeEqual(a, b) {
-  a = String(a);
-  b = String(b);
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
-}
-
-function getCookie(request, name) {
-  const header = request.headers.get("Cookie") || "";
-  const match = header.match(new RegExp("(?:^|;\\s*)" + name + "=([^;]*)"));
-  return match ? decodeURIComponent(match[1]) : null;
-}
-
-async function isAuthed(request, env) {
-  if (!env.DASHBOARD_PASSWORD) return false;
-  const cookie = getCookie(request, COOKIE_NAME);
-  if (!cookie) return false;
-  const expected = await sha256Hex(env.DASHBOARD_PASSWORD + ":session");
-  return timingSafeEqual(cookie, expected);
-}
 
 // ---------- rendering helpers ----------
 
@@ -116,12 +83,38 @@ const PAGE_CSS =
   ".mixed-tag{font-size:10.5px;font-weight:700;color:var(--red-dark);background:var(--red-tint);padding:3px 8px;border-radius:999px;}" +
   ".report-row{font-size:12px;color:var(--ink-soft);padding:3px 0;border-top:1px solid var(--paper-alt);}" +
   ".report-row:first-child{border-top:none;}" +
-  "table{width:100%;border-collapse:collapse;background:var(--white);border:1px solid var(--line);border-radius:12px;overflow:hidden;font-size:13px;}" +
-  "th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--paper-alt);vertical-align:top;}" +
-  "th{background:var(--paper-alt);font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-faint);}" +
-  "tr:last-child td{border-bottom:none;}" +
   ".issue-tag{font-size:11px;font-weight:600;background:var(--paper-alt);padding:2px 8px;border-radius:999px;white-space:nowrap;}" +
+  ".dash-actions{display:flex;align-items:flex-start;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid var(--paper-alt);flex-wrap:wrap;}" +
+  ".dash-inline-form{flex:0 0 auto;}" +
+  ".dash-respond-form{flex:1 1 220px;display:flex;gap:8px;align-items:flex-start;}" +
+  ".dash-respond-form textarea{flex:1;font:inherit;font-size:12.5px;padding:7px 9px;border:1px solid var(--line);border-radius:8px;resize:vertical;min-height:36px;background:var(--paper-alt);}" +
+  ".dash-btn{font:inherit;font-size:12px;font-weight:600;border-radius:999px;padding:7px 13px;cursor:pointer;white-space:nowrap;border:1px solid var(--line);background:var(--white);color:var(--ink-soft);}" +
+  ".dash-btn:hover{background:var(--paper-alt);}" +
+  ".dash-btn-respond{background:var(--ink);color:#fff;border-color:var(--ink);}" +
+  ".dash-btn-respond:hover{background:var(--red);border-color:var(--red);}" +
   ".ts-cell{color:var(--ink-faint);white-space:nowrap;}";
+
+function actionForms(type, key) {
+  const typeAttr = escapeHtml(type);
+  const keyAttr = escapeHtml(key);
+  return (
+    "<div class=\"dash-actions\">" +
+    "<form method=\"POST\" action=\"/dashboard-action\" class=\"dash-inline-form\">" +
+    "<input type=\"hidden\" name=\"type\" value=\"" + typeAttr + "\">" +
+    "<input type=\"hidden\" name=\"key\" value=\"" + keyAttr + "\">" +
+    "<input type=\"hidden\" name=\"action\" value=\"dismiss\">" +
+    "<button type=\"submit\" class=\"dash-btn\">Dismiss</button>" +
+    "</form>" +
+    "<form method=\"POST\" action=\"/dashboard-action\" class=\"dash-respond-form\">" +
+    "<input type=\"hidden\" name=\"type\" value=\"" + typeAttr + "\">" +
+    "<input type=\"hidden\" name=\"key\" value=\"" + keyAttr + "\">" +
+    "<input type=\"hidden\" name=\"action\" value=\"respond\">" +
+    "<textarea name=\"message\" placeholder=\"Write a public response&hellip;\" maxlength=\"500\" required></textarea>" +
+    "<button type=\"submit\" class=\"dash-btn dash-btn-respond\">Respond</button>" +
+    "</form>" +
+    "</div>"
+  );
+}
 
 function renderLogin(error) {
   const errorHtml = error ? "<div class=\"login-error\">" + escapeHtml(error) + "</div>" : "";
@@ -174,25 +167,55 @@ function renderFeedbackSection(rows) {
   if (!rows.length) {
     return "<div class=\"dash-empty\">No feedback submitted yet.</div>";
   }
-  const body = rows.map(function (r) {
+  const cards = rows.map(function (r) {
     const issueLabel = ISSUE_LABELS[r.issueType] || r.issueType;
+    const message = r.message
+      ? "<div class=\"report-row\">" + escapeHtml(r.message) + "</div>"
+      : "";
     return (
-      "<tr><td>" + escapeHtml(r.spotName || r.spotId) + "</td>" +
-      "<td><span class=\"issue-tag\">" + escapeHtml(issueLabel) + "</span></td>" +
-      "<td>" + (r.message ? escapeHtml(r.message) : "<span style=\"color:var(--ink-faint)\">&mdash;</span>") + "</td>" +
-      "<td class=\"ts-cell\">" + formatRelativeTime(r.ts) + "</td></tr>"
+      "<div class=\"report-card\"><div class=\"report-card-head\">" +
+      "<strong>" + escapeHtml(r.spotName || r.spotId) + "</strong>" +
+      "<span class=\"issue-tag\">" + escapeHtml(issueLabel) + "</span>" +
+      "</div>" +
+      message +
+      "<div class=\"report-row\">" + formatRelativeTime(r.ts) + "</div>" +
+      actionForms("feedback", r.key) +
+      "</div>"
     );
   }).join("");
-  return (
-    "<table><thead><tr><th>Spot</th><th>Issue</th><th>Message</th><th>When</th></tr></thead>" +
-    "<tbody>" + body + "</tbody></table>"
-  );
+  return cards;
+}
+
+function renderSuggestionsSection(rows) {
+  if (!rows.length) {
+    return "<div class=\"dash-empty\">No spot suggestions submitted yet.</div>";
+  }
+  const cards = rows.map(function (r) {
+    const categoryTag = r.category ? "<span class=\"issue-tag\">" + escapeHtml(r.category) + "</span>" : "";
+    const description = r.description
+      ? "<div class=\"report-row\">" + escapeHtml(r.description) + "</div>"
+      : "";
+    return (
+      "<div class=\"report-card\"><div class=\"report-card-head\">" +
+      "<strong>" + escapeHtml(r.name) + "</strong>" + categoryTag +
+      "</div>" +
+      "<div class=\"report-row\"><i class=\"fa-solid fa-location-dot\"></i> " + escapeHtml(r.location) + "</div>" +
+      description +
+      "<div class=\"report-row\">" + formatRelativeTime(r.ts) + "</div>" +
+      actionForms("suggestion", r.key) +
+      "</div>"
+    );
+  }).join("");
+  return cards;
 }
 
 function renderDashboard(data) {
   const body =
     "<div class=\"dash-header\"><h1>Reports Dashboard</h1><a href=\"/\">&larr; Back to map</a></div>" +
     "<div class=\"dash-body\">" +
+    "<div class=\"dash-section\"><h2>Suggested spots (" + data.suggestionRows.length + ")</h2>" +
+    renderSuggestionsSection(data.suggestionRows) +
+    "</div>" +
     "<div class=\"dash-section\"><h2>Busyness reports (" + data.busynessRows.length + " spots active)</h2>" +
     renderBusynessSection(data.busynessRows) +
     "</div>" +
@@ -231,11 +254,24 @@ async function loadDashboardData(env) {
   for (const key of feedbackList.keys) {
     const raw = await env.STUDY_SPOTS_KV.get(key.name);
     if (!raw) continue;
-    feedbackRows.push(JSON.parse(raw));
+    const record = JSON.parse(raw);
+    record.key = key.name;
+    feedbackRows.push(record);
   }
   feedbackRows.sort(function (a, b) { return b.ts - a.ts; });
 
-  return { busynessRows: busynessRows, feedbackRows: feedbackRows };
+  const suggestionList = await env.STUDY_SPOTS_KV.list({ prefix: "suggestion:" });
+  const suggestionRows = [];
+  for (const key of suggestionList.keys) {
+    const raw = await env.STUDY_SPOTS_KV.get(key.name);
+    if (!raw) continue;
+    const record = JSON.parse(raw);
+    record.key = key.name;
+    suggestionRows.push(record);
+  }
+  suggestionRows.sort(function (a, b) { return b.ts - a.ts; });
+
+  return { busynessRows: busynessRows, feedbackRows: feedbackRows, suggestionRows: suggestionRows };
 }
 
 // ---------- route handlers ----------
@@ -264,9 +300,8 @@ export async function onRequestPost({ request, env }) {
     return htmlResponse(renderLogin("Incorrect password."), 401);
   }
   const token = await sha256Hex(env.DASHBOARD_PASSWORD + ":session");
-  const isHttps = new URL(request.url).protocol === "https:";
-  const cookie =
-    COOKIE_NAME + "=" + token + "; Max-Age=" + SESSION_MAX_AGE + "; Path=/; HttpOnly; SameSite=Strict" +
-    (isHttps ? "; Secure" : "");
-  return new Response(null, { status: 302, headers: { Location: "/dashboard", "Set-Cookie": cookie } });
+  return new Response(null, {
+    status: 302,
+    headers: { Location: "/dashboard", "Set-Cookie": sessionCookieHeader(request, token) }
+  });
 }
