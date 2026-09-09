@@ -466,7 +466,7 @@ import { CATEGORY_META, FILTER_TAGS, STUDY_SPOTS } from "./data.js";
       '<div class="log-entry-tag">' + typeLabel + "</div>" +
       '<div class="log-entry-summary">' + escapeHtmlClient(entry.summary) + "</div>" +
       '<div class="log-entry-response">' + escapeHtmlClient(entry.response) + "</div>" +
-      '<div class="log-entry-time">' + formatRelativeTime(entry.ts) + "</div>" +
+      '<div class="log-entry-time">' + formatDateTime(entry.ts) + "</div>" +
       "</div>"
     );
   }
@@ -568,6 +568,13 @@ import { CATEGORY_META, FILTER_TAGS, STUDY_SPOTS } from "./data.js";
     if (minutes < 60) return minutes + " min ago";
     var hours = Math.round(minutes / 60);
     return hours === 1 ? "1 hr ago" : hours + " hrs ago";
+  }
+
+  function formatDateTime(ts) {
+    var d = new Date(ts);
+    var dateLabel = d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    var timeLabel = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+    return dateLabel + " at " + timeLabel;
   }
 
   function formatDuration(ms) {
