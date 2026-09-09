@@ -38,7 +38,19 @@
 
 <main class="app">
   <section class="list-pane" id="list-pane">
-    <div class="results-count" id="results-count"></div>
+    <div class="results-bar">
+      <div class="results-count" id="results-count"></div>
+      <div class="sort-control">
+        <label for="sort-select" class="sort-label">Sort</label>
+        <select id="sort-select">
+          <option value="default">Alphabetical</option>
+          <option value="distance">Distance</option>
+          <option value="busyness">Least busy</option>
+          <option value="transit">Transit time</option>
+        </select>
+      </div>
+    </div>
+    <div class="sort-note" id="sort-note" hidden></div>
     <div class="spot-list" id="spot-list"></div>
     <div class="empty-state" id="empty-state" hidden>
       <i class="fa-solid fa-mug-hot"></i>

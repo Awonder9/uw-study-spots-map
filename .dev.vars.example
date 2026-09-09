@@ -1,2 +1,7 @@
 # Copy this file to .dev.vars (gitignored) for local testing with `npm run dev:full`.
 DASHBOARD_PASSWORD=choose-a-local-test-password
+
+# Optional. Powers live transit times for the "Transit time" sort — get a
+# transit_publicapi_* key at https://transitapp.com/apis. Without it, that
+# sort falls back to straight-line walking-distance estimates.
+TRANSIT_API_KEY=

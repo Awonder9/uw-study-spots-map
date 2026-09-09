@@ -20,10 +20,12 @@ index.html, app.js, style.css, data.js   — the frontend (built by Vite)
 functions/
   api/
     busyness.js       — GET/POST current busyness status per spot
+    busyness-all.js   — GET busyness status for every spot at once (the "Least busy" sort)
     feedback.js       — POST a correction/issue report
     suggest-spot.js   — POST a new spot suggestion
     log.js            — GET public "Updates" log (owner responses)
     spots.js           — GET base spot data merged with any live edits
+    transit-time.js    — POST an estimated travel time per spot from a given origin (the "Transit time" sort)
   dashboard.js         — GET/POST login + render the reports dashboard
   dashboard-action.js  — POST dismiss/respond actions on feedback/suggestions (admin only)
   dashboard-edit.js    — GET/POST spot editor: index + per-spot edit form (admin only)
@@ -46,6 +48,7 @@ One KV namespace (bound as `STUDY_SPOTS_KV`), everything else is key-prefix conv
 | `log:<ts>-<rand>` | `{type, summary, originalMessage, response, ts}` | created when the owner "Responds" in the dashboard |
 | `feedback-throttle:<deviceId>`, `suggest-throttle:<deviceId>` | timestamp string | 30s TTL, guards accidental double-submits |
 | `spot-override:<spotId>` | `{name, address, category, affiliation, tags, description}` | full replacement record, written by the `/dashboard-edit` spot editor |
+| `transit-cache:<lat>,<lng>` | `{fetchedAt, routes}` | 60s-fresh cache of a Transit API `nearby_routes` lookup, keyed to ~11m precision; expires from KV after 120s |
 
 Study spot data (name, address, coordinates, tags, description) is seeded from the static, hand-authored `STUDY_SPOTS` in `data.js` — but name/address/category/affiliation/tags/description can be overridden live via `/dashboard-edit` without a redeploy (see below). **Coordinates are never editable through the UI** — a spot's lat/lng always comes from `data.js`; if a location genuinely needs to move, that's a `data.js` + redeploy change.
 
@@ -71,6 +74,7 @@ For `/dashboard` to work locally, copy `.dev.vars.example` to `.dev.vars` and se
 - **Build output directory:** `dist`
 - **Framework preset:** Vite
 - **Environment variable (Production):** `DASHBOARD_PASSWORD` — set as a **Secret**, not plaintext, under Settings → Environment variables. Without it, `/dashboard` shows a clear "not configured" message rather than failing silently.
+- **Environment variable (Production, optional):** `TRANSIT_API_KEY` — a `transit_publicapi_*` key from https://transitapp.com/apis, set as a Secret. Powers live bus times for the "Transit time" sort; without it, that sort silently falls back to walking-distance estimates (see "Sorting and directions" below).
 - **KV binding:** create a namespace under Workers & Pages → KV, then bind it to the Pages project (Settings → Functions → KV namespace bindings) with variable name `STUDY_SPOTS_KV`. No `wrangler.toml` is used — bindings are dashboard-only.
 - Environment variable/secret changes apply to the **next** deployment, not retroactively — if you're adding one to an already-live project, trigger a redeploy (Deployments tab → latest → "Retry deployment").
 
@@ -85,6 +89,16 @@ Shows three sections: suggested spots, active busyness reports (read-only), and 
 ## Spot editor (`/dashboard-edit`)
 
 Same auth/session as `/dashboard` (logging into one logs into both — one cookie, and each page's login form redirects back to wherever you were headed rather than always landing on `/dashboard`). A searchable index of all spots links to a per-spot edit form (name, address, category, affiliation, tags, description). Saving writes a `spot-override:<id>` KV record; a **Reset to original** button (shown only when an override exists) deletes it. Edits take effect immediately — the main site fetches `/api/spots` once on load and merges any overrides into the bundled data before rendering, so there's no rebuild/redeploy step, and the site still works fine on the static data if that fetch ever fails.
+
+## Sorting and directions
+
+The sort control next to the results count offers four orders: Alphabetical (default), Distance, Least busy, and Transit time.
+
+- **Distance** and **Transit time** need the visitor's location, requested via the browser's Geolocation API only when one of those is first selected (never on page load). A denial or failure falls back to alphabetical order with an inline note — it's never a dead end.
+- **Least busy** fetches every spot's status in one call to `/api/busyness-all` and sorts empty → some seats → busy → full, with spots that have no recent reports sorted last.
+- **Transit time** estimates each spot's travel time from the visitor via `/api/transit-time`, taking the faster of a straight-line walk or a live single-bus Transit trip (no transfers). Without a `TRANSIT_API_KEY` configured, every estimate is walking-distance only — the sort still works, just less precisely, and the UI says so.
+
+**Get Directions** opens `transitapp.com`'s web trip planner (`/en/trip`) with the spot as the destination, requesting the visitor's location the same way as above for the origin. If location isn't available, the destination still opens and Transit's own page prompts for a location itself. (The `origin`/`destination`/`_search` query parameters aren't publicly documented by Transit — they were determined by inspecting the trip planner's own client code, so they could change in a future Transit release.)
 
 ## Overlay behavior
 

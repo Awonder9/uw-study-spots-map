@@ -27,7 +27,19 @@ import { CATEGORY_META, FILTER_TAGS, STUDY_SPOTS } from "./data.js";
     search: "",
     category: "All",
     tags: new Set(),
-    selectedId: null
+    selectedId: null,
+    sort: "default",
+    userLocation: null,
+    // idle | pending | granted | denied | unavailable
+    locationStatus: "idle",
+    busynessById: {},
+    // idle | loading | loaded | error
+    busynessStatus: "idle",
+    transitMinutesById: {},
+    transitLive: false,
+    transitOrigin: null,
+    // idle | loading | loaded | error
+    transitStatus: "idle"
   };
 
   var els = {
@@ -37,6 +49,8 @@ import { CATEGORY_META, FILTER_TAGS, STUDY_SPOTS } from "./data.js";
     tagToggleBtn: document.getElementById("tag-toggle-btn"),
     spotList: document.getElementById("spot-list"),
     resultsCount: document.getElementById("results-count"),
+    sortSelect: document.getElementById("sort-select"),
+    sortNote: document.getElementById("sort-note"),
     emptyState: document.getElementById("empty-state"),
     clearFiltersBtn: document.getElementById("clear-filters-btn"),
     legend: document.getElementById("legend"),
@@ -224,9 +238,193 @@ import { CATEGORY_META, FILTER_TAGS, STUDY_SPOTS } from "./data.js";
     applyFilters();
   });
 
+  // ---------- Sorting ----------
+  var BUSYNESS_SORT_ORDER = ["empty", "some-seats", "busy", "full"];
+
+  function byName(a, b) { return a.name.localeCompare(b.name); }
+
+  // Great-circle distance in meters — used for both the "Distance" sort and
+  // as the walking-time fallback when live transit data isn't available.
+  function haversineMeters(lat1, lon1, lat2, lon2) {
+    var R = 6371000;
+    var toRad = function (d) { return (d * Math.PI) / 180; };
+    var dLat = toRad(lat2 - lat1);
+    var dLon = toRad(lon2 - lon1);
+    var a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
+  }
+
+  // Unreported spots sort after every known level rather than being treated
+  // as empty — we simply don't know, so "least busy first" shouldn't imply it.
+  function busynessRank(status) {
+    if (!status || !status.level) return BUSYNESS_SORT_ORDER.length;
+    var idx = BUSYNESS_SORT_ORDER.indexOf(status.level);
+    return idx === -1 ? BUSYNESS_SORT_ORDER.length : idx;
+  }
+
+  function sortSpots(list) {
+    if (state.sort === "distance" && state.userLocation) {
+      var origin = state.userLocation;
+      return list.slice().sort(function (a, b) {
+        var da = haversineMeters(origin.lat, origin.lng, a.lat, a.lng);
+        var db = haversineMeters(origin.lat, origin.lng, b.lat, b.lng);
+        return da - db || byName(a, b);
+      });
+    }
+
+    if (state.sort === "busyness" && state.busynessStatus === "loaded") {
+      return list.slice().sort(function (a, b) {
+        return busynessRank(state.busynessById[a.id]) - busynessRank(state.busynessById[b.id]) || byName(a, b);
+      });
+    }
+
+    if (state.sort === "transit" && state.transitStatus === "loaded") {
+      return list.slice().sort(function (a, b) {
+        var ta = state.transitMinutesById[a.id];
+        var tb = state.transitMinutesById[b.id];
+        var ra = typeof ta === "number" ? ta : Infinity;
+        var rb = typeof tb === "number" ? tb : Infinity;
+        return ra - rb || byName(a, b);
+      });
+    }
+
+    // Default (alphabetical), and the fallback while location/busyness/transit
+    // data for the other modes is still loading or came back unavailable.
+    return list.slice().sort(byName);
+  }
+
+  function sortNoteText() {
+    if (state.sort === "distance") {
+      if (state.locationStatus === "pending") return "Finding your location…";
+      if (state.locationStatus === "denied") return "Location access denied — showing alphabetical order instead.";
+      if (state.locationStatus === "unavailable") return "Location unavailable — showing alphabetical order instead.";
+      return "";
+    }
+    if (state.sort === "busyness") {
+      if (state.busynessStatus === "loading") return "Loading busyness reports…";
+      if (state.busynessStatus === "error") return "Couldn't load busyness reports — showing alphabetical order instead.";
+      return "";
+    }
+    if (state.sort === "transit") {
+      if (state.locationStatus === "pending") return "Finding your location…";
+      if (state.locationStatus === "denied" || state.locationStatus === "unavailable") {
+        return "Location unavailable — showing alphabetical order instead.";
+      }
+      if (state.transitStatus === "loading") return "Estimating transit times…";
+      if (state.transitStatus === "error") return "Couldn't estimate transit times — showing alphabetical order instead.";
+      if (state.transitStatus === "loaded" && !state.transitLive) {
+        return "Showing walking-distance estimates — live transit times aren't configured.";
+      }
+      return "";
+    }
+    return "";
+  }
+
+  function renderSortNote() {
+    var text = sortNoteText();
+    els.sortNote.textContent = text;
+    els.sortNote.hidden = !text;
+  }
+
+  // Resolves the browser's geolocation once per session (cached in
+  // state.userLocation) and hands it to `callback`. Denial/failure isn't
+  // fatal — callers fall back to the default alphabetical sort.
+  function requestUserLocation(callback) {
+    function done(loc) {
+      if (typeof callback === "function") callback(loc);
+    }
+    if (state.userLocation) { done(state.userLocation); return; }
+    if (!navigator.geolocation) {
+      state.locationStatus = "unavailable";
+      applyFilters();
+      done(null);
+      return;
+    }
+    state.locationStatus = "pending";
+    applyFilters();
+    navigator.geolocation.getCurrentPosition(
+      function (pos) {
+        state.userLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        state.locationStatus = "granted";
+        applyFilters();
+        done(state.userLocation);
+      },
+      function () {
+        state.locationStatus = "denied";
+        applyFilters();
+        done(null);
+      },
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 5 * 60 * 1000 }
+    );
+  }
+
+  function ensureBusynessAll() {
+    if (state.busynessStatus === "loaded" || state.busynessStatus === "loading") return;
+    state.busynessStatus = "loading";
+    applyFilters();
+    fetch("/api/busyness-all")
+      .then(function (res) { if (!res.ok) throw new Error("bad status"); return res.json(); })
+      .then(function (data) {
+        state.busynessById = data.statuses || {};
+        state.busynessStatus = "loaded";
+        applyFilters();
+      })
+      .catch(function () {
+        state.busynessStatus = "error";
+        applyFilters();
+      });
+  }
+
+  function ensureTransitTimes(origin) {
+    if (state.transitStatus === "loading") return;
+    if (
+      state.transitStatus === "loaded" &&
+      state.transitOrigin &&
+      state.transitOrigin.lat === origin.lat &&
+      state.transitOrigin.lng === origin.lng
+    ) return;
+
+    state.transitStatus = "loading";
+    applyFilters();
+    fetch("/api/transit-time", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ origin: origin })
+    })
+      .then(function (res) { if (!res.ok) throw new Error("bad status"); return res.json(); })
+      .then(function (data) {
+        state.transitMinutesById = data.minutes || {};
+        state.transitLive = Boolean(data.live);
+        state.transitOrigin = origin;
+        state.transitStatus = "loaded";
+        applyFilters();
+      })
+      .catch(function () {
+        state.transitStatus = "error";
+        applyFilters();
+      });
+  }
+
+  els.sortSelect.addEventListener("change", function () {
+    state.sort = els.sortSelect.value;
+
+    if (state.sort === "distance") {
+      requestUserLocation();
+    } else if (state.sort === "busyness") {
+      ensureBusynessAll();
+    } else if (state.sort === "transit") {
+      requestUserLocation(function (loc) {
+        if (loc) ensureTransitTimes(loc);
+      });
+    }
+
+    applyFilters();
+  });
+
   // ---------- Filtering ----------
   function getFiltered() {
-    return STUDY_SPOTS.filter(function (spot) {
+    var filtered = STUDY_SPOTS.filter(function (spot) {
       if (state.category !== "All" && spot.category !== state.category) return false;
       for (var t of state.tags) { if (spot.tags.indexOf(t) === -1) return false; }
       if (state.search) {
@@ -234,13 +432,15 @@ import { CATEGORY_META, FILTER_TAGS, STUDY_SPOTS } from "./data.js";
         if (haystack.indexOf(state.search) === -1) return false;
       }
       return true;
-    }).sort(function (a, b) { return a.name.localeCompare(b.name); });
+    });
+    return sortSpots(filtered);
   }
 
   function applyFilters() {
     var filtered = getFiltered();
     renderList(filtered);
     updateMarkers(filtered);
+    renderSortNote();
   }
 
   // ---------- List rendering ----------
@@ -326,14 +526,13 @@ import { CATEGORY_META, FILTER_TAGS, STUDY_SPOTS } from "./data.js";
       : '<span class="badge badge-offcampus">Off-Campus</span>';
 
     var tagsHtml = spot.tags.map(function (t) { return '<span class="drawer-tag">' + t + "</span>"; }).join("");
-    var mapsUrl = "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(spot.name + ", " + spot.address);
 
     els.drawerContent.innerHTML =
       '<div class="drawer-hero" style="--drawer-color:' + meta.color + '"><i class="' + meta.icon + '"></i></div>' +
       '<div class="drawer-eyebrow"><span class="badge badge-category" style="--drawer-color:' + meta.color + '">' + meta.label + "</span>" + affiliationBadge + "</div>" +
       "<h2>" + spot.name + "</h2>" +
       '<p class="drawer-address"><i class="fa-solid fa-location-dot"></i>' + spot.address + "</p>" +
-      '<a class="directions-btn" href="' + mapsUrl + '" target="_blank" rel="noopener"><i class="fa-solid fa-diamond-turn-right"></i> Get Directions</a>' +
+      '<button class="directions-btn" type="button" data-spot-id="' + spot.id + '"><i class="fa-solid fa-diamond-turn-right"></i> Get Directions</button>' +
       '<div class="drawer-section-label">How busy is it right now?</div>' +
       '<div class="busyness-box" id="busyness-box" data-spot-id="' + spot.id + '">' +
       busynessStatusHtml(null, true) + busynessButtonsHtml(spot.id) +
@@ -358,6 +557,33 @@ import { CATEGORY_META, FILTER_TAGS, STUDY_SPOTS } from "./data.js";
     els.drawer.setAttribute("aria-hidden", "true");
     els.drawerBackdrop.classList.remove("open");
     if (history.replaceState) history.replaceState(null, "", location.pathname + location.search);
+  }
+
+  // Transit App's web trip planner (transitapp.com/en/trip) reads the
+  // destination/origin as either "lat,lng" pairs or free-text addresses;
+  // `_search` companions just seed a friendly label while it geocodes.
+  // Leaving `origin` off entirely (when the browser won't share a location)
+  // is fine — the planner then asks the visitor for their own location itself.
+  function directionsUrl(spot, origin) {
+    var params = new URLSearchParams();
+    params.set("destination", spot.lat + "," + spot.lng);
+    params.set("destination_search", spot.name);
+    if (origin) params.set("origin", origin.lat + "," + origin.lng);
+    return "https://transitapp.com/en/trip?" + params.toString();
+  }
+
+  // Opens a blank tab synchronously (inside the click handler, so popup
+  // blockers allow it) and only points it at the real URL once the async
+  // geolocation prompt resolves — navigating a tab opened *after* the prompt
+  // settles gets blocked by Chrome/Safari because the user-gesture window
+  // has already expired by then.
+  function openDirections(spot) {
+    var pendingTab = window.open("about:blank", "_blank");
+    requestUserLocation(function (loc) {
+      var url = directionsUrl(spot, loc);
+      if (pendingTab && !pendingTab.closed) pendingTab.location.href = url;
+      else window.open(url, "_blank");
+    });
   }
 
   els.drawerClose.addEventListener("click", closeDrawer);
@@ -779,6 +1005,12 @@ import { CATEGORY_META, FILTER_TAGS, STUDY_SPOTS } from "./data.js";
   // Delegated listener: drawerContent is replaced via innerHTML on each spot,
   // so we bind once on the stable parent rather than re-binding per render.
   els.drawerContent.addEventListener("click", function (e) {
+    var directionsBtn = e.target.closest(".directions-btn");
+    if (directionsBtn) {
+      var spotForDirections = spotsById[directionsBtn.dataset.spotId];
+      if (spotForDirections) openDirections(spotForDirections);
+      return;
+    }
     var busynessBtn = e.target.closest(".busyness-btn");
     if (busynessBtn) {
       var box = e.target.closest("#busyness-box");
