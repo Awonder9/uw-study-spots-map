@@ -110,11 +110,24 @@ function renderSuggestionsSection(rows) {
   return cards;
 }
 
+function renderPostUpdateForm() {
+  return (
+    "<div class=\"dash-section\"><h2>Post an update</h2>" +
+    "<form method=\"POST\" action=\"/dashboard-action\" class=\"post-update-form\">" +
+    "<input type=\"hidden\" name=\"action\" value=\"post\">" +
+    "<input type=\"text\" name=\"summary\" maxlength=\"150\" placeholder=\"Headline&hellip;\" required>" +
+    "<textarea name=\"message\" maxlength=\"500\" placeholder=\"What's new?&hellip;\" required></textarea>" +
+    "<button type=\"submit\" class=\"save-btn\">Post update</button>" +
+    "</form></div>"
+  );
+}
+
 function renderDashboard(data) {
   const body =
     "<div class=\"dash-header\"><h1>Reports Dashboard</h1>" +
     "<div class=\"dash-header-links\"><a href=\"/dashboard-edit\">Edit Spots</a><a href=\"/\">&larr; Back to map</a></div></div>" +
     "<div class=\"dash-body\">" +
+    renderPostUpdateForm() +
     "<div class=\"dash-section\"><h2>Suggested spots (" + data.suggestionRows.length + ")</h2>" +
     renderSuggestionsSection(data.suggestionRows) +
     "</div>" +

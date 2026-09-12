@@ -685,8 +685,13 @@ import { CATEGORY_META, FILTER_TAGS, STUDY_SPOTS } from "./data.js";
   });
 
   // ---------- Updates log ----------
+  function logEntryTypeLabel(type) {
+    if (type === "suggestion") return "Suggestion";
+    if (type === "announcement") return "Update";
+    return "Feedback";
+  }
   function logEntryHtml(entry) {
-    var typeLabel = entry.type === "suggestion" ? "Suggestion" : "Feedback";
+    var typeLabel = logEntryTypeLabel(entry.type);
     return (
       '<div class="log-entry">' +
       '<div class="log-entry-tag">' + typeLabel + "</div>" +
@@ -720,7 +725,7 @@ import { CATEGORY_META, FILTER_TAGS, STUDY_SPOTS } from "./data.js";
       .then(function (data) {
         var entries = data.entries || [];
         if (!entries.length) {
-          els.logList.innerHTML = '<div class="log-empty">No updates yet — check back after you submit feedback or a suggestion.</div>';
+          els.logList.innerHTML = '<div class="log-empty">No updates yet — check back soon.</div>';
           return;
         }
         els.logList.innerHTML = entries.map(logEntryHtml).join("");
@@ -741,7 +746,7 @@ import { CATEGORY_META, FILTER_TAGS, STUDY_SPOTS } from "./data.js";
 
   // ---------- New-update toast ----------
   function showUpdateToast(entry) {
-    els.updateToastTag.textContent = entry.type === "suggestion" ? "Suggestion" : "Feedback";
+    els.updateToastTag.textContent = logEntryTypeLabel(entry.type);
     els.updateToastSummary.textContent = entry.summary;
     els.updateToastResponse.textContent = entry.response;
     els.updateToast.hidden = false;

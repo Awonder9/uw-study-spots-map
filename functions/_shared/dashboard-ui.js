@@ -76,6 +76,10 @@ export const PAGE_CSS =
   ".dash-btn-respond{background:var(--ink);color:#fff;border-color:var(--ink);}" +
   ".dash-btn-respond:hover{background:var(--red);border-color:var(--red);}" +
   ".ts-cell{color:var(--ink-faint);white-space:nowrap;}" +
+  ".post-update-form{background:var(--white);border:1px solid var(--line);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:10px;}" +
+  ".post-update-form input[type=text],.post-update-form textarea{width:100%;font:inherit;font-size:13.5px;padding:9px 12px;border:1px solid var(--line);border-radius:8px;background:var(--paper-alt);}" +
+  ".post-update-form textarea{resize:vertical;min-height:70px;}" +
+  ".post-update-form button{align-self:flex-start;}" +
   /* spot-edit page */
   ".search-form{display:flex;gap:8px;margin-bottom:18px;}" +
   ".search-form input{flex:1;font:inherit;font-size:13.5px;padding:9px 12px;border:1px solid var(--line);border-radius:999px;background:var(--white);}" +
